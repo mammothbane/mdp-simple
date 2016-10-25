@@ -5,14 +5,16 @@ from .coord import Coord
 
 
 class MDP:
+    """The representation of the whole problem."""
     def __init__(self, filename, reward=None, gamma=None, precision=None):
         with open(filename) as f:
             data = json.load(f)
 
-        self.gamma = gamma if gamma else data['gamma']
         self.dimens = Coord(data['dimens']['x'], data['dimens']['y'])
-        self.reward = reward if reward else data['reward']
+
+        self.gamma = gamma if gamma else data['gamma']
         self.precision = precision if precision else data['precision']
+        self.reward = reward if reward else data['reward']
         assert reward
 
         self._squares = [_Col(self.dimens.y, x + 1, self) for x in range(self.dimens.x)]
@@ -37,7 +39,6 @@ class MDP:
 
             for w in water_squares:
                 if w.x == square.x and w.y == square.y:
-                    square.water = True
                     square.water_dir = water['dir']
                     square.chance = water['chance']
 
@@ -68,7 +69,7 @@ class MDP:
                 elif reward:
                     sqval = sq.reward
 
-                sqval = '%.3f' % sqval
+                sqval = '%.2f' % sqval
 
                 delim = ' '
 
@@ -78,6 +79,16 @@ class MDP:
                     delim = '~'
                 elif sq.final:
                     delim = '|'
+
+                if policy:
+                    sqval = sq.policy()
+                    if not sqval:
+                        sqval = ' '
+                    delim = ' '
+                    if sq.empty:
+                        sqval = 'x'
+                    if sq.final:
+                        sqval = 'F'
 
                 s += ('%s%s%s' % (delim, sqval, delim)).rjust(10)
             s += '\n'
@@ -93,33 +104,19 @@ class MDP:
         self._print(policy=True)
 
     def value_iterate(self):
+        """Run the value iteration algorithm until within the specified precision."""
         for i in count(1):
             delta_ok = True
 
             for sq in self:
                 if sq.empty:
                     continue
-                try:
-                    if sq.water_dir == 'l':
-                        water_tgt = sq.left
-                    elif sq.water_dir == 'r':
-                        water_tgt = sq.right
-                    elif sq.water_dir == 'd':
-                        water_tgt = sq.down
-                    elif sq.water_dir == 'u':
-                        water_tgt = sq.up
-                except IndexError:
-                    assert sq.chance == 0
-                    water_tgt = sq
-
-                if water_tgt.empty:
-                    water_tgt = sq
 
                 if sq.final:
                     new_util = sq.reward
                 else:
                     new_util = sq.reward + self.gamma * (max([elem.utility[i - 1]*(1 - sq.chance) +
-                                                              water_tgt.utility[i - 1] * sq.chance
+                                                              sq.water_target.utility[i - 1] * sq.chance
                                                               for elem in sq.adjacent()]))
 
                 sq.utility.append(new_util)
@@ -131,6 +128,11 @@ class MDP:
 
 
 class _Col:
+    """
+    A column of tiles.
+
+    Utility class so that we can address tiles by their [x][y] coordinates.
+    """
     def __init__(self, size, x, parent):
         self.x = x
         self.squares = [_Square(Coord(x, y + 1), parent) for y in range(size)]
@@ -183,21 +185,54 @@ class _Square:
         return self.parent[self.coord.x][self.coord.y + 1]
 
     def adjacent(self):
+        return [x for _, x in self.adjacent_dict()]
+
+    def adjacent_dict(self):
         if self.coord.x > 1:
             if not self.left.empty:
-                yield self.left
+                yield '<', self.left
 
         if self.coord.y > 1:
             if not self.up.empty:
-                yield self.up
+                yield '^', self.up
 
         if self.coord.y < self.parent.dimens.y:
             if not self.down.empty:
-                yield self.down
+                yield 'v', self.down
 
         if self.coord.x < self.parent.dimens.x:
             if not self.right.empty:
-                yield self.right
+                yield '>', self.right
+
+    @property
+    def water_target(self):
+        try:
+            if self.water_dir == 'l':
+                elem = self.left
+            elif self.water_dir == 'r':
+                elem = self.right
+            elif self.water_dir == 'd':
+                elem = self.down
+            elif self.water_dir == 'u':
+                elem = self.up
+
+            if elem.empty:
+                return self
+
+            return elem
+
+        except IndexError:
+            assert self.chance == 0
+            return self
+
+    def policy(self):
+        if self.empty or self.final:
+            return
+
+        opts = {direction: self.water_target.utility[-1]*self.chance + elem.utility[-1]*(1 - self.chance) for direction, elem in
+                self.adjacent_dict()}
+
+        return max(opts, key=opts.get)
 
     def __repr__(self):
         return '(%s, %s): R: %s, U: %s%s' % \
