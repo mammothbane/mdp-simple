@@ -5,13 +5,14 @@ from .coord import Coord
 
 
 class MDP:
-    def __init__(self, filename, reward=None, gamma=None):
+    def __init__(self, filename, reward=None, gamma=None, precision=None):
         with open(filename) as f:
             data = json.load(f)
 
         self.gamma = gamma if gamma else data['gamma']
         self.dimens = Coord(data['dimens']['x'], data['dimens']['y'])
         self.reward = reward if reward else data['reward']
+        self.precision = precision if precision else data['precision']
         assert reward
 
         self._squares = [_Col(self.dimens.y, x + 1, self) for x in range(self.dimens.x)]
@@ -122,7 +123,7 @@ class MDP:
                                                               for elem in sq.adjacent()]))
 
                 sq.utility.append(new_util)
-                if i < 3 or abs(sq.utility[-1] - sq.utility[-2]) > 0.0001:
+                if i < 5 or abs(sq.utility[-1] - sq.utility[-2]) > self.precision:
                     delta_ok = False
 
             if delta_ok:
