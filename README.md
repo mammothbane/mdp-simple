@@ -1,6 +1,6 @@
 ## Markov Decision Process
 
-This is is an implementation a simple MDP agent. Configuration files specify a grid-based world with:
+This is is an implementation of a simple MDP agent. Configuration files specify a grid-based world with:
 
 - impassable tiles
 - 'normal' tiles
